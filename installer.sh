@@ -250,11 +250,15 @@ else
 	do
 		rm -r -f bin/ >> /dev/null 2>&1
 
-		if [ "$(uname -s)" == "Darwin" ]; then
+		uname_s=$(uname -s)
+		file_ext=
+		if [ "$uname_s" == "Darwin" ]; then
 			PLATFORM="MacOS-x86_64"
+			BINARY_PATH="$PWD/bin/php7/bin"
+			file_ext="tar.gz"
 			echo -n " MacOS PHP build available"
 
-		elif [ "$(uname -s)" == "Linux" ]; then
+		elif [ "$uname_s" == "Linux" ]; then
 			#if [[ "$(cat /etc/redhat-release 2>/dev/null)" == *CentOS* ]]; then
 			#echo -n " CentOS PHP build available, downloading $CENTOS_BUILD.tar.gz..."
 			#download_file "https://dl.bintray.com/pocketmine/PocketMine/$CENTOS_BUILD.tar.gz" | tar -zx > /dev/null 2>&1
@@ -263,34 +267,44 @@ else
 			#TODO: check architecture (we might not be on an x86_64 system)
 
 			PLATFORM="Linux-x86_64"
+			BINARY_PATH="$PWD/bin/php7/bin"
+			file_ext="tar.gz"
 			echo -n " Linux PHP build available"
 
 			#fi
+		elif [[ "$uname_s" == "MINGW64_NT"* ]]; then
+			PLATFORM="Windows-x64"
+			BINARY_PATH="$PWD/bin/php"
+			file_ext="zip"
+			echo -n " Windows PHP build available"
 		else
 			echo " no prebuilt PHP download available"
 			break
 		fi
 
 		echo -n "... downloading $PHP_VERSION ..."
-		download_file "https://jenkins.pmmp.io/job/PHP-$PHP_VERSION-Aggregate/lastSuccessfulBuild/artifact/PHP-$PHP_VERSION-$PLATFORM.tar.gz" | tar -zx > /dev/null 2>&1
-
-		chmod +x ./bin/php7/bin/*
-		if [ -f ./bin/composer ]; then
-			chmod +x ./bin/composer
+		download_link="https://jenkins.pmmp.io/job/PHP-$PHP_VERSION-Aggregate/lastSuccessfulBuild/artifact/PHP-$PHP_VERSION-$PLATFORM.$file_ext"
+		if [ "$file_ext" == "tar.gz" ]; then
+			download_file "$download_link" | tar -zx > /dev/null 2>&1
+			chmod +x "$BINARY_PATH/"* 2> /dev/null
+		else
+			download_file "$download_link" > "$PWD/php.zip"
+			unzip -qo php.zip
+			rm php.zip
 		fi
 
 		echo -n " updating php.ini..."
+		sed -i'.bak' "s/date.timezone=.*/date.timezone=$(date +%Z)/" "$BINARY_PATH/php.ini"
 
-		sed -i'.bak' "s/date.timezone=.*/date.timezone=$(date +%Z)/" bin/php7/bin/php.ini
-
-		EXTENSION_DIR=$(find "$(pwd)/bin" -name *debug-zts*) #make sure this only captures from `bin` in case the user renamed their old binary folder
-		#Modify extension_dir directive if it exists, otherwise add it
-		LF=$'\n'
-		grep -q '^extension_dir' bin/php7/bin/php.ini && sed -i'bak' "s{^extension_dir=.*{extension_dir=\"$EXTENSION_DIR\"{" bin/php7/bin/php.ini || sed -i'bak' "1s{^{extension_dir=\"$EXTENSION_DIR\"\\$LF{" bin/php7/bin/php.ini
+		if [[ "$PLATFORM" != "Windows"* ]]; then
+			EXTENSION_DIR=$(find "$(pwd)/bin" -name *debug-zts*) #make sure this only captures from `bin` in case the user renamed their old binary folder
+			#Modify extension_dir directive if it exists, otherwise add it
+			LF=$'\n'
+			grep -q '^extension_dir' "$BINARY_PATH/php.ini" && sed -i'bak' "s{^extension_dir=.*{extension_dir=\"$EXTENSION_DIR\"{" "$BINARY_PATH/php.ini" || sed -i'bak' "1s{^{extension_dir=\"$EXTENSION_DIR\"\\$LF{" "$BINARY_PATH/php.ini"
+		fi
 
 		echo -n " checking..."
-
-		if [ "$(./bin/php7/bin/php -r 'echo 1;' 2>/dev/null)" == "1" ]; then
+		if [ "$("$BINARY_PATH/php" -r 'echo 1;' 2>/dev/null)" == "1" ]; then
 			echo " done"
 			alldone=yes
 		else
